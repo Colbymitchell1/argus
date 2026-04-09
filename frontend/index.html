@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ARGUS — Autonomous Remote Command</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+html,body { height:100%; background:#010a14; font-family:'Courier New',monospace; overflow:hidden; }
+
+.root { width:100vw; height:100vh; position:relative; overflow:hidden; background:#020c18; }
+.bg-canvas { position:absolute; inset:0; width:100%; height:100%; }
+.vignette { position:absolute; inset:0; background:radial-gradient(ellipse at center, transparent 25%, rgba(1,8,18,0.8) 100%); pointer-events:none; z-index:1; }
+.scan { position:absolute; left:0; right:0; height:1px; background:linear-gradient(90deg,transparent,rgba(0,229,255,0.06),transparent); animation:scanmove 7s linear infinite; z-index:2; pointer-events:none; }
+@keyframes scanmove { 0%{top:-2px}100%{top:102%} }
+
+/* HUD Overlay */
+.hud { position:absolute; inset:0; z-index:2; pointer-events:none; }
+.hud-corner { position:absolute; width:44px; height:44px; }
+.hud-corner.tl{top:14px;left:14px;border-top:1px solid rgba(0,229,255,0.35);border-left:1px solid rgba(0,229,255,0.35);}
+.hud-corner.tr{top:14px;right:14px;border-top:1px solid rgba(0,229,255,0.35);border-right:1px solid rgba(0,229,255,0.35);}
+.hud-corner.bl{bottom:14px;left:14px;border-bottom:1px solid rgba(0,229,255,0.35);border-left:1px solid rgba(0,229,255,0.35);}
+.hud-corner.br{bottom:14px;right:14px;border-bottom:1px solid rgba(0,229,255,0.35);border-right:1px solid rgba(0,229,255,0.35);}
+.hud-coord { position:absolute; font-size:7px; letter-spacing:2px; color:rgba(0,180,220,0.35); line-height:1.8; }
+.hud-coord.tl{top:18px;left:62px;}
+.hud-coord.tr{top:18px;right:62px;text-align:right;}
+.hud-coord.bl{bottom:18px;left:62px;}
+.hud-coord.br{bottom:18px;right:62px;text-align:right;}
+
+/* Layout */
+.content { position:relative; z-index:3; width:100%; height:100%; display:flex; flex-direction:column; padding:18px 22px; gap:12px; }
+
+/* Header */
+.header { display:flex; justify-content:space-between; align-items:flex-start; flex-shrink:0; }
+.title-block { flex:1; }
+.title { font-size:clamp(22px,3vw,32px); font-weight:700; letter-spacing:10px; color:#00e5ff; text-shadow:0 0 30px rgba(0,229,255,0.25); }
+.title-line { height:1px; background:linear-gradient(90deg,rgba(0,229,255,0.7),rgba(0,229,255,0.1),transparent); margin-top:5px; }
+.subtitle { font-size:8px; letter-spacing:4px; color:#0a3a4a; margin-top:5px; }
+.ticker { font-size:8px; letter-spacing:2px; color:#00b8d8; margin-top:5px; min-height:13px; }
+.cursor { animation:blink 1s step-end infinite; }
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+
+/* Arc reactor */
+.arc-wrap { display:flex; flex-direction:column; align-items:center; gap:5px; }
+.arc { width:54px; height:54px; border-radius:50%; border:1px solid rgba(0,229,255,0.2); display:flex; align-items:center; justify-content:center; position:relative; flex-shrink:0; }
+.arc-ring { position:absolute; inset:-7px; border-radius:50%; border:1px solid rgba(0,229,255,0.07); animation:spin 12s linear infinite; }
+.arc-ring::after { content:''; position:absolute; top:-2px; left:50%; transform:translateX(-50%); width:4px; height:4px; border-radius:50%; background:rgba(0,229,255,0.55); }
+.arc-mid { width:36px; height:36px; border-radius:50%; border:1px solid rgba(0,229,255,0.12); display:flex; align-items:center; justify-content:center; animation:spin 7s linear infinite reverse; }
+.arc-core { width:17px; height:17px; border-radius:50%; background:rgba(0,200,255,0.85); box-shadow:0 0 14px rgba(0,200,255,0.65); animation:corepulse 2s ease-in-out infinite; }
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+@keyframes corepulse{0%,100%{opacity:0.7;box-shadow:0 0 8px rgba(0,200,255,0.4)}50%{opacity:1;box-shadow:0 0 22px rgba(0,200,255,0.85)}}
+.radar-c { width:54px; height:22px; }
+
+/* Middle */
+.mid { display:flex; gap:12px; flex:1; min-height:0; }
+
+/* Telemetry */
+.telem { width:115px; flex-shrink:0; border:1px solid rgba(0,180,220,0.1); border-radius:8px; background:rgba(0,10,25,0.75); padding:10px 8px; display:flex; flex-direction:column; gap:5px; overflow:hidden; }
+.telem-title { font-size:7px; letter-spacing:3px; color:#0a3040; border-bottom:1px solid rgba(0,180,220,0.1); padding-bottom:5px; }
+.sig-bars { display:flex; align-items:flex-end; gap:2px; height:18px; margin:2px 0; }
+.sig-bar { width:7px; border-radius:1px; background:rgba(0,180,220,0.1); transition:background 0.5s; }
+.sig-bar.active { background:#00b8d8; animation:sigpulse 2s ease-in-out infinite; }
+@keyframes sigpulse{0%,100%{opacity:0.5}50%{opacity:1}}
+.telem-scroll { flex:1; overflow:hidden; position:relative; }
+.telem-feed { position:absolute; top:0; left:0; right:0; }
+.telem-row { font-size:7px; letter-spacing:1px; color:#0a3a4a; line-height:2; white-space:nowrap; overflow:hidden; }
+.telem-row span { color:#009ab8; }
+
+/* Cards area */
+.cards { flex:1; display:flex; flex-direction:column; gap:10px; }
+.card { border-radius:9px; padding:14px 16px; position:relative; overflow:hidden; background:rgba(0,12,28,0.82); backdrop-filter:blur(14px); border:1px solid rgba(0,180,220,0.12); flex:1; transition:border-color 0.4s; }
+.card.online  { border-color:rgba(0,230,140,0.22); }
+.card.offline { border-color:rgba(255,70,70,0.2); }
+.card.pending { border-color:rgba(0,180,255,0.18); }
+.card.alert   { border-color:rgba(255,70,70,0.6); animation:alertpulse 1s ease-in-out infinite; }
+@keyframes alertpulse{0%,100%{box-shadow:0 0 0 transparent}50%{box-shadow:0 0 12px rgba(255,70,70,0.3)}}
+.card-tl { position:absolute; top:0; left:0; right:0; height:1px; }
+.online  .card-tl { background:linear-gradient(90deg,transparent,rgba(0,230,140,0.5),transparent); }
+.offline .card-tl { background:linear-gradient(90deg,transparent,rgba(255,70,70,0.45),transparent); }
+.pending .card-tl { background:linear-gradient(90deg,transparent,rgba(0,200,255,0.45),transparent); }
+.cn{position:absolute;width:7px;height:7px;}
+.cn.tl{top:4px;left:4px;border-top:1px solid rgba(0,229,255,0.3);border-left:1px solid rgba(0,229,255,0.3);}
+.cn.tr{top:4px;right:4px;border-top:1px solid rgba(0,229,255,0.3);border-right:1px solid rgba(0,229,255,0.3);}
+.cn.bl{bottom:4px;left:4px;border-bottom:1px solid rgba(0,229,255,0.3);border-left:1px solid rgba(0,229,255,0.3);}
+.cn.br{bottom:4px;right:4px;border-bottom:1px solid rgba(0,229,255,0.3);border-right:1px solid rgba(0,229,255,0.3);}
+.card-inner { display:flex; align-items:center; gap:16px; height:100%; }
+.card-left { flex:1; }
+.node-id   { font-size:7px; letter-spacing:3px; color:#0a2535; margin-bottom:3px; }
+.node-name { font-size:clamp(11px,1.5vw,14px); font-weight:700; letter-spacing:3px; margin-bottom:3px; }
+.online  .node-name { color:#00e890; text-shadow:0 0 8px rgba(0,230,140,0.3); }
+.offline .node-name { color:#ff5050; text-shadow:0 0 8px rgba(255,70,70,0.3); }
+.pending .node-name { color:#00c8ff; text-shadow:0 0 8px rgba(0,200,255,0.3); }
+.node-desc { font-size:8px; color:#0a2535; letter-spacing:1px; line-height:1.7; }
+.card-right { display:flex; flex-direction:column; align-items:flex-end; gap:6px; min-width:130px; }
+.node-ip { font-size:8px; color:#0a3550; letter-spacing:1px; }
+.srow { display:flex; align-items:center; gap:5px; }
+.sbar { width:75px; height:2px; background:rgba(255,255,255,0.04); border-radius:1px; overflow:hidden; }
+.sfill { height:100%; border-radius:1px; transition:width 0.6s; }
+.online  .sfill { background:#00e890; width:100%; animation:flicker 3s ease-in-out infinite; }
+.offline .sfill { background:#ff5050; width:8%; }
+.pending .sfill { background:#00c8ff; width:50%; animation:flicker 2s ease-in-out infinite; }
+@keyframes flicker{0%,100%{opacity:0.55}50%{opacity:1}}
+.slabel { font-size:7px; letter-spacing:2px; white-space:nowrap; }
+.online  .slabel { color:#00e890; }
+.offline .slabel { color:#ff5050; }
+.pending .slabel { color:#00c8ff; }
+.latency { font-size:7px; color:#0a4a5a; letter-spacing:1px; }
+.wake-btn { background:transparent; border:1px solid rgba(0,229,255,0.2); color:#0a5a6a; font-family:'Courier New',monospace; font-size:7px; letter-spacing:2px; padding:4px 10px; cursor:pointer; border-radius:3px; transition:all 0.2s; pointer-events:all; }
+.wake-btn:hover { border-color:rgba(0,229,255,0.7); color:#00e5ff; background:rgba(0,229,255,0.06); }
+.wake-btn:disabled { opacity:0.4; cursor:not-allowed; }
+.wv-canvas { width:80px; height:18px; opacity:0.55; }
+
+/* Footer */
+.footer { display:grid; grid-template-columns:repeat(5,1fr); gap:8px; flex-shrink:0; }
+.stat { border:1px solid rgba(0,180,220,0.08); border-radius:5px; padding:7px 10px; background:rgba(0,8,20,0.75); }
+.stat-l { font-size:7px; letter-spacing:2px; color:#0a2535; margin-bottom:2px; }
+.stat-v { font-size:11px; letter-spacing:1px; color:#00b0cc; font-weight:600; }
+.stat-v.ok   { color:#00e890; }
+.stat-v.warn { color:#ff5050; }
+.stat-v.info { color:#00c8ff; }
+
+/* Ollama chat panel */
+.chat-toggle { position:fixed; bottom:22px; right:22px; z-index:10; width:44px; height:44px; border-radius:50%; background:rgba(0,20,40,0.9); border:1px solid rgba(0,229,255,0.3); color:#00e5ff; font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.2s; }
+.chat-toggle:hover { border-color:rgba(0,229,255,0.7); box-shadow:0 0 14px rgba(0,229,255,0.2); }
+.chat-panel { position:fixed; bottom:74px; right:22px; z-index:10; width:320px; background:rgba(2,14,30,0.97); border:1px solid rgba(0,180,220,0.2); border-radius:10px; display:none; flex-direction:column; overflow:hidden; backdrop-filter:blur(20px); }
+.chat-panel.open { display:flex; }
+.chat-header { padding:10px 14px; border-bottom:1px solid rgba(0,180,220,0.1); font-size:8px; letter-spacing:3px; color:#0a5a6a; display:flex; justify-content:space-between; align-items:center; }
+.chat-header span { color:#00b8d8; }
+.chat-msgs { flex:1; height:220px; overflow-y:auto; padding:10px 12px; display:flex; flex-direction:column; gap:8px; }
+.chat-msgs::-webkit-scrollbar { width:3px; }
+.chat-msgs::-webkit-scrollbar-track { background:transparent; }
+.chat-msgs::-webkit-scrollbar-thumb { background:rgba(0,180,220,0.2); border-radius:2px; }
+.msg { font-size:10px; letter-spacing:1px; line-height:1.6; max-width:90%; }
+.msg.user { align-self:flex-end; color:#00b8d8; text-align:right; }
+.msg.ai { align-self:flex-start; color:#00e890; }
+.msg.sys { align-self:center; color:#0a4a5a; font-size:8px; letter-spacing:2px; }
+.chat-input-row { display:flex; gap:6px; padding:10px 12px; border-top:1px solid rgba(0,180,220,0.1); }
+.chat-input { flex:1; background:rgba(0,20,40,0.8); border:1px solid rgba(0,180,220,0.15); border-radius:4px; color:#00e5ff; font-family:'Courier New',monospace; font-size:9px; padding:6px 8px; outline:none; letter-spacing:1px; }
+.chat-input::placeholder { color:#0a3a4a; }
+.chat-input:focus { border-color:rgba(0,229,255,0.35); }
+.chat-send { background:transparent; border:1px solid rgba(0,229,255,0.2); color:#00b8d8; font-family:'Courier New',monospace; font-size:8px; padding:6px 10px; cursor:pointer; border-radius:4px; letter-spacing:1px; transition:all 0.2s; }
+.chat-send:hover { border-color:rgba(0,229,255,0.6); color:#00e5ff; }
+.chat-model { font-size:7px; letter-spacing:2px; color:#0a3040; padding:0 12px 8px; }
+</style>
+</head>
+<body>
+<div class="root">
+  <canvas class="bg-canvas" id="bgc"></canvas>
+  <div class="vignette"></div>
+  <div class="scan"></div>
+
+  <div class="hud">
+    <div class="hud-corner tl"></div><div class="hud-corner tr"></div>
+    <div class="hud-corner bl"></div><div class="hud-corner br"></div>
+    <div class="hud-coord tl">LAT 33.5531° N<br>LON 117.2139° W</div>
+    <div class="hud-coord tr">ALT 412m<br>SYS <span id="sysStatus">NOMINAL</span></div>
+    <div class="hud-coord bl">SUBNET 192.168.50.0/24<br>GW 192.168.50.1</div>
+    <div class="hud-coord br" id="clockHUD">--:--:-- UTC</div>
+  </div>
+
+  <div class="content">
+    <div class="header">
+      <div class="title-block">
+        <div class="title">ARGUS</div>
+        <div class="title-line"></div>
+        <div class="subtitle">// AUTONOMOUS REMOTE COMMAND — PERSONAL INFRASTRUCTURE</div>
+        <div class="ticker" id="ticker"><span class="cursor">_</span></div>
+      </div>
+      <div class="arc-wrap">
+        <div class="arc">
+          <div class="arc-ring"></div>
+          <div class="arc-mid"><div class="arc-core"></div></div>
+        </div>
+        <canvas class="radar-c" id="radarC"></canvas>
+      </div>
+    </div>
+
+    <div class="mid">
+      <div class="telem">
+        <div class="telem-title">// TELEMETRY</div>
+        <div class="sig-bars" id="sigBars"></div>
+        <div class="telem-scroll">
+          <div class="telem-feed" id="telemFeed"></div>
+        </div>
+      </div>
+
+      <div class="cards" id="cardsContainer">
+        <!-- Cards injected by JS -->
+      </div>
+    </div>
+
+    <div class="footer">
+      <div class="stat"><div class="stat-l">NODES ONLINE</div><div class="stat-v" id="statNodes">— / —</div></div>
+      <div class="stat"><div class="stat-l">UPTIME</div><div class="stat-v info" id="statUptime">--:--:--</div></div>
+      <div class="stat"><div class="stat-l">OLLAMA</div><div class="stat-v warn" id="statOllama">CHECKING</div></div>
+      <div class="stat"><div class="stat-l">LAST POLL</div><div class="stat-v info" id="statPoll">--:--:--</div></div>
+      <div class="stat"><div class="stat-l">ARGUS</div><div class="stat-v">v1.0.0</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- Ollama Chat -->
+<button class="chat-toggle" id="chatToggle" title="ARGUS AI">⬡</button>
+<div class="chat-panel" id="chatPanel">
+  <div class="chat-header">// ARGUS AI INTERFACE <span id="chatStatus">OFFLINE</span></div>
+  <div class="chat-msgs" id="chatMsgs">
+    <div class="msg sys">ARGUS AI INTERFACE READY</div>
+    <div class="msg sys">CONNECT LEGION TO ACTIVATE</div>
+  </div>
+  <div class="chat-model" id="chatModel">MODEL: —</div>
+  <div class="chat-input-row">
+    <input class="chat-input" id="chatInput" placeholder="ENTER COMMAND..." autocomplete="off">
+    <button class="chat-send" id="chatSend">SEND</button>
+  </div>
+</div>
+
+<script>
+const API = 'http://localhost:8000';
+
+// ── Background canvas ─────────────────────────────────────────────
+const bgC = document.getElementById('bgc');
+const ctx = bgC.getContext('2d');
+function resizeBg() { bgC.width = window.innerWidth; bgC.height = window.innerHeight; }
+resizeBg();
+window.addEventListener('resize', resizeBg);
+const W = () => bgC.width, H = () => bgC.height;
+
+const phi = (1 + Math.sqrt(5)) / 2;
+const rawV = [[-1,phi,0],[1,phi,0],[-1,-phi,0],[1,-phi,0],[0,-1,phi],[0,1,phi],[0,-1,-phi],[0,1,-phi],[phi,0,-1],[phi,0,1],[-phi,0,-1],[-phi,0,1]];
+const EDGES = [[0,1],[0,5],[0,7],[0,10],[0,11],[1,5],[1,7],[1,8],[1,9],[2,3],[2,4],[2,6],[2,10],[2,11],[3,4],[3,6],[3,8],[3,9],[4,5],[4,9],[4,11],[5,9],[5,11],[6,7],[6,8],[6,10],[7,8],[7,10],[8,9],[10,11]];
+
+function buildGlobe(R) {
+  const verts = rawV.map(v => { const l = Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]); return [v[0]/l*R,v[1]/l*R,v[2]/l*R]; });
+  const lats = [], lons = [];
+  for (let lat = -75; lat <= 75; lat += 25) { const ring=[],y=Math.sin(lat*Math.PI/180)*R,r2=Math.cos(lat*Math.PI/180)*R; for(let i=0;i<18;i++){const a=(i/18)*Math.PI*2;ring.push([Math.cos(a)*r2,y,Math.sin(a)*r2]);}lats.push(ring); }
+  for (let lon = 0; lon < 360; lon += 20) { const line=[]; for(let i=0;i<=24;i++){const lt=-90+(i/24)*180,y=Math.sin(lt*Math.PI/180)*R,r2=Math.cos(lt*Math.PI/180)*R,a=lon*Math.PI/180;line.push([Math.cos(a)*r2,y,Math.sin(a)*r2]);}lons.push(line); }
+  return { verts, lats, lons };
+}
+
+const stars = Array.from({length:90},()=>({x:(Math.random()-.5)*2000,y:(Math.random()-.5)*1200,r:Math.random()*1.1+0.1,o:Math.random()*0.3+0.04,tw:Math.random()*Math.PI*2,ts:.008+Math.random()*.025,vx:(Math.random()-.5)*.1,vy:(Math.random()-.5)*.1}));
+const hexC = '0123456789ABCDEF';
+const streams = Array.from({length:14},()=>({x:Math.random()*1400,y:Math.random()*900,speed:.5+Math.random()*.9,chars:Array.from({length:10+Math.floor(Math.random()*8)},()=>({c:hexC[Math.floor(Math.random()*16)],o:Math.random()*.12}))}));
+
+let rotY = 0, frame = 0;
+function ry3(x,y,z,a){return[x*Math.cos(a)+z*Math.sin(a),y,-x*Math.sin(a)+z*Math.cos(a)];}
+function rx3(x,y,z,a){const s=Math.sin(a*.15);return[x,y*Math.cos(s)-z*Math.sin(s),y*Math.sin(s)+z*Math.cos(s)];}
+function proj(x,y,z,cx,cy){const f=700,s=f/(f+z);return{x:cx+x*s,y:cy+y*s,s};}
+
+function drawBg() {
+  const w=W(),h=H(),cx=w/2,cy=h/2;
+  ctx.clearRect(0,0,w,h);
+  const bg=ctx.createRadialGradient(cx,cy*.55,0,cx,cy,Math.max(w,h)*.85);
+  bg.addColorStop(0,'rgba(0,28,58,0.32)');bg.addColorStop(1,'rgba(0,4,12,0)');
+  ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
+
+  streams.forEach(s=>{
+    s.y+=s.speed; if(s.y>h+80){s.y=-60;s.x=Math.random()*w;}
+    s.chars.forEach((ch,i)=>{ if(Math.random()<.018)ch.c=hexC[Math.floor(Math.random()*16)]; ctx.font='8px Courier New';ctx.fillStyle=`rgba(0,200,255,${ch.o*(1-i/s.chars.length*.7)})`;ctx.fillText(ch.c,s.x,s.y-i*10); });
+  });
+
+  const R = Math.min(w,h)*.28;
+  const {verts,lats,lons} = buildGlobe(R);
+  rotY += .0022;
+  const rotX = Math.sin(frame*.0007)*.22;
+  const tv = verts.map(([x,y,z])=>{ let [a,b,c]=ry3(x,y,z,rotY);[a,b,c]=rx3(a,b,c,rotX);return proj(a,b,c,cx,cy); });
+
+  EDGES.forEach(([a,b])=>{ const pa=tv[a],pb=tv[b],al=Math.max(.02,((pa.s+pb.s)/2-.5)*.22);ctx.beginPath();ctx.moveTo(pa.x,pa.y);ctx.lineTo(pb.x,pb.y);ctx.strokeStyle=`rgba(0,200,255,${al})`;ctx.lineWidth=.5;ctx.stroke(); });
+  lats.forEach(ring=>{ ctx.beginPath();ring.forEach((v,i)=>{ let[x,y,z]=ry3(v[0],v[1],v[2],rotY);[x,y,z]=rx3(x,y,z,rotX);const p=proj(x,y,z,cx,cy);i===0?ctx.moveTo(p.x,p.y):ctx.lineTo(p.x,p.y); });ctx.closePath();ctx.strokeStyle='rgba(0,160,220,.09)';ctx.lineWidth=.4;ctx.stroke(); });
+  lons.forEach(line=>{ ctx.beginPath();line.forEach((v,i)=>{ let[x,y,z]=ry3(v[0],v[1],v[2],rotY);[x,y,z]=rx3(x,y,z,rotX);const p=proj(x,y,z,cx,cy);i===0?ctx.moveTo(p.x,p.y):ctx.lineTo(p.x,p.y); });ctx.strokeStyle='rgba(0,150,210,.06)';ctx.lineWidth=.4;ctx.stroke(); });
+  tv.forEach(p=>{ const al=Math.max(0,(p.s-.5)*.85);ctx.beginPath();ctx.arc(p.x,p.y,p.s*1.7,0,Math.PI*2);ctx.fillStyle=`rgba(0,229,255,${al})`;ctx.fill(); });
+
+  stars.forEach(s=>{ s.x+=s.vx;s.y+=s.vy; if(s.x>w/2+100)s.x=-w/2-100;if(s.x<-w/2-100)s.x=w/2+100;if(s.y>h/2+100)s.y=-h/2-100;if(s.y<-h/2-100)s.y=h/2+100; const op=s.o+Math.sin(frame*s.ts+s.tw)*s.o*.55;ctx.beginPath();ctx.arc(cx+s.x,cy+s.y,s.r,0,Math.PI*2);ctx.fillStyle=`rgba(0,200,255,${Math.max(0,op)})`;ctx.fill(); });
+
+  frame++;
+  requestAnimationFrame(drawBg);
+}
+drawBg();
+
+// ── Radar ─────────────────────────────────────────────────────────
+const radarC = document.getElementById('radarC');
+const rc = radarC.getContext('2d');
+radarC.width = 54; radarC.height = 22;
+let ra = 0;
+function drawRadar() {
+  rc.clearRect(0,0,54,22);
+  const cx=27,cy=11,r=10;
+  rc.beginPath();rc.arc(cx,cy,r,0,Math.PI*2);rc.strokeStyle='rgba(0,200,255,.14)';rc.lineWidth=.5;rc.stroke();
+  rc.beginPath();rc.moveTo(cx-r,cy);rc.lineTo(cx+r,cy);rc.strokeStyle='rgba(0,200,255,.07)';rc.lineWidth=.4;rc.stroke();
+  rc.beginPath();rc.moveTo(cx,cy-r);rc.lineTo(cx,cy+r);rc.strokeStyle='rgba(0,200,255,.07)';rc.lineWidth=.4;rc.stroke();
+  rc.beginPath();rc.moveTo(cx,cy);rc.arc(cx,cy,r,ra-.7,ra);rc.closePath();rc.fillStyle='rgba(0,229,255,.1)';rc.fill();
+  rc.beginPath();rc.moveTo(cx,cy);rc.lineTo(cx+Math.cos(ra)*r,cy+Math.sin(ra)*r);rc.strokeStyle='rgba(0,229,255,.55)';rc.lineWidth=1;rc.stroke();
+  ra+=.05; requestAnimationFrame(drawRadar);
+}
+drawRadar();
+
+// ── Waveform ──────────────────────────────────────────────────────
+function makeWaveform(id, color, active) {
+  const c = document.getElementById(id); if (!c) return;
+  const wc = c.getContext('2d'); c.width=80; c.height=18;
+  let t=0;
+  function draw() {
+    wc.clearRect(0,0,80,18);wc.beginPath();
+    for(let x=0;x<80;x++){const y=active?9+Math.sin((x*.2)+t)*3+Math.sin((x*.09)+t*1.3)*1.5:9+Math.sin(x*.4)*.4;x===0?wc.moveTo(x,y):wc.lineTo(x,y);}
+    wc.strokeStyle=color;wc.lineWidth=1;wc.stroke();t+=.09;requestAnimationFrame(draw);
+  }
+  draw();
+}
+
+// ── Status ticker ─────────────────────────────────────────────────
+const msgs=['SCANNING NETWORK...','PING 192.168.50.1 — RESPONSE ACQUIRED','PING 192.168.50.56 — NO RESPONSE DETECTED','NODE LEGION OFFLINE — WAKE SIGNAL STANDING BY','MONITORING 3 REGISTERED NODES','VPN TUNNEL NOMINAL — WIREGUARD ACTIVE','ARGUS STANDING BY — ALL SYSTEMS NOMINAL'];
+let mIdx=0,cIdx=0,tStr='',tEl=document.getElementById('ticker');
+function typeTicker(){
+  if(cIdx<msgs[mIdx].length){tStr+=msgs[mIdx][cIdx];tEl.innerHTML=tStr+'<span class="cursor">_</span>';cIdx++;setTimeout(typeTicker,44);}
+  else{setTimeout(()=>{tStr='';cIdx=0;mIdx=(mIdx+1)%msgs.length;typeTicker();},2400);}
+}
+typeTicker();
+
+// ── Clock ─────────────────────────────────────────────────────────
+function updateClock(){const n=new Date(),h=String(n.getUTCHours()).padStart(2,'0'),m=String(n.getUTCMinutes()).padStart(2,'0'),s=String(n.getUTCSeconds()).padStart(2,'0');document.getElementById('clockHUD').textContent=`${h}:${m}:${s} UTC`;}
+setInterval(updateClock,1000);updateClock();
+
+// ── Signal bars ───────────────────────────────────────────────────
+const sigEl=document.getElementById('sigBars');
+[6,10,14,18,14,10,6].forEach((h,i)=>{const b=document.createElement('div');b.className='sig-bar'+(i<5?' active':'');b.style.height=h+'px';sigEl.appendChild(b);});
+
+// ── Telemetry feed ────────────────────────────────────────────────
+const telemLines=['IP 192.168.50.1','STATUS ONLINE','LATENCY 71ms','PKT LOSS 0%','---','IP 192.168.50.56','STATUS OFFLINE','WOL READY','RTX 4070','---','IP 192.168.50.100','STATUS PENDING','TRUENAS QUEUE','IMMICH QUEUE','---','VPN WIREGUARD','DNS CLOUDFLARE','SUBNET /24','GW 192.168.50.1','---','ARGUS v1.0.0','UPTIME NOMINAL'];
+const feedEl=document.getElementById('telemFeed');
+[...telemLines,...telemLines].forEach(line=>{const d=document.createElement('div');d.className='telem-row';const p=line.split(' ');d.innerHTML=p.length>1&&line!=='---'?`${p[0]} <span>${p.slice(1).join(' ')}</span>`:`<span style="color:#0a2535">${line}</span>`;feedEl.appendChild(d);});
+let feedPos=0;
+setInterval(()=>{feedPos+=10;if(feedPos>feedEl.scrollHeight/2)feedPos=0;feedEl.style.transform=`translateY(-${feedPos}px)`;},400);
+
+// ── Card builder ──────────────────────────────────────────────────
+function buildCard(device) {
+  const statusClass = device.online ? 'online' : (device.ip === '192.168.50.100' ? 'pending' : 'offline');
+  const statusLabel = device.online ? `ONLINE // ${device.latency_ms}ms` : (device.ip === '192.168.50.100' ? 'PENDING DEPLOY' : 'OFFLINE');
+  const nodeLabels = { 'Router':'NODE 01 — GATEWAY', 'Legion':'NODE 02 — AI INFERENCE', 'Beelink':'NODE 03 — STORAGE' };
+  const nodeDescs  = { 'Router':'ASUS GT-BE98 Pro — VPN Server / Network Core', 'Legion':'Lenovo Legion RTX 4070 — Ollama Local LLM', 'Beelink':'Beelink ME Mini — TrueNAS / Immich / ARGUS Host' };
+  const wvId = `wv_${device.name}`;
+
+  const card = document.createElement('div');
+  card.className = `card ${statusClass}`;
+  card.id = `card_${device.name}`;
+  card.innerHTML = `
+    <div class="card-tl"></div>
+    <div class="cn tl"></div><div class="cn tr"></div><div class="cn bl"></div><div class="cn br"></div>
+    <div class="card-inner">
+      <div class="card-left">
+        <div class="node-id">// ${nodeLabels[device.name]||device.name}</div>
+        <div class="node-name">${device.name.toUpperCase()}</div>
+        <div class="node-desc">${nodeDescs[device.name]||device.description}</div>
+      </div>
+      <div class="card-right">
+        <div class="node-ip">${device.ip}</div>
+        <div class="srow">
+          <div class="sbar"><div class="sfill"></div></div>
+          <span class="slabel">${statusLabel}</span>
+        </div>
+        ${device.mac ? `<button class="wake-btn" id="wol_${device.name}" onclick="sendWol('${device.name}',this)">// WAKE SIGNAL</button>` : `<canvas class="wv-canvas" id="${wvId}"></canvas>`}
+      </div>
+    </div>`;
+  return card;
+}
+
+function updateCard(device) {
+  const existing = document.getElementById(`card_${device.name}`);
+  const container = document.getElementById('cardsContainer');
+  const newCard = buildCard(device);
+  if (existing) { container.replaceChild(newCard, existing); }
+  else { container.appendChild(newCard); }
+  const wvEl = document.getElementById(`wv_${device.name}`);
+  if (wvEl) { const color = device.online ? 'rgba(0,230,140,0.6)' : 'rgba(0,200,255,0.35)'; makeWaveform(`wv_${device.name}`, color, device.online); }
+}
+
+// ── API polling ───────────────────────────────────────────────────
+let ollamaModels = [];
+
+async function pollNetwork() {
+  try {
+    const res = await fetch(`${API}/api/network/status`);
+    const data = await res.json();
+    data.devices.forEach(updateCard);
+    const online = data.online_count, total = data.total_count;
+    document.getElementById('statNodes').textContent = `${online} / ${total}`;
+    document.getElementById('statNodes').className = 'stat-v ' + (online === total ? 'ok' : online > 0 ? 'info' : 'warn');
+    document.getElementById('statPoll').textContent = new Date().toLocaleTimeString();
+    document.getElementById('sysStatus').textContent = online > 0 ? 'NOMINAL' : 'DEGRADED';
+  } catch(e) { console.warn('Network poll failed', e); }
+}
+
+async function pollOllama() {
+  try {
+    const res = await fetch(`${API}/api/ollama/status`);
+    const data = await res.json();
+    const el = document.getElementById('statOllama');
+    const chatStatus = document.getElementById('chatStatus');
+    const modelEl = document.getElementById('chatModel');
+    if (data.online) {
+      el.textContent = 'ONLINE'; el.className = 'stat-v ok';
+      chatStatus.textContent = 'ONLINE'; chatStatus.style.color = '#00e890';
+      ollamaModels = data.models || [];
+      modelEl.textContent = `MODEL: ${ollamaModels[0] || '—'}`;
+    } else {
+      el.textContent = 'OFFLINE'; el.className = 'stat-v warn';
+      chatStatus.textContent = 'OFFLINE'; chatStatus.style.color = '#ff5050';
+      modelEl.textContent = 'MODEL: LEGION OFFLINE';
+    }
+  } catch(e) { console.warn('Ollama poll failed', e); }
+}
+
+async function pollSystem() {
+  try {
+    const res = await fetch(`${API}/api/system/info`);
+    const data = await res.json();
+    let sec = Math.floor(data.uptime_seconds);
+    const h=String(Math.floor(sec/3600)).padStart(2,'0');
+    const m=String(Math.floor((sec%3600)/60)).padStart(2,'0');
+    const s=String(sec%60).padStart(2,'0');
+    document.getElementById('statUptime').textContent = `${h}:${m}:${s}`;
+  } catch(e) {}
+}
+
+// ── Wake-on-LAN ───────────────────────────────────────────────────
+async function sendWol(deviceName, btn) {
+  btn.disabled = true; btn.textContent = '// SENDING...';
+  try {
+    const res = await fetch(`${API}/api/wol/wake`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({device_name: deviceName}) });
+    const data = await res.json();
+    btn.textContent = data.success ? '// SIGNAL SENT ✓' : '// FAILED';
+    setTimeout(()=>{ btn.textContent='// WAKE SIGNAL'; btn.disabled=false; }, 4000);
+  } catch(e) { btn.textContent='// ERROR'; setTimeout(()=>{ btn.textContent='// WAKE SIGNAL'; btn.disabled=false; }, 3000); }
+}
+
+// ── Chat panel ────────────────────────────────────────────────────
+document.getElementById('chatToggle').addEventListener('click', ()=>{
+  document.getElementById('chatPanel').classList.toggle('open');
+});
+
+async function sendChat() {
+  const input = document.getElementById('chatInput');
+  const msgs = document.getElementById('chatMsgs');
+  const prompt = input.value.trim();
+  if (!prompt) return;
+  input.value = '';
+
+  const userMsg = document.createElement('div');
+  userMsg.className='msg user'; userMsg.textContent=prompt; msgs.appendChild(userMsg);
+  msgs.scrollTop = msgs.scrollHeight;
+
+  const model = ollamaModels[0];
+  if (!model) {
+    const sys=document.createElement('div');sys.className='msg sys';sys.textContent='LEGION OFFLINE — WAKE NODE 02 FIRST';msgs.appendChild(sys);msgs.scrollTop=msgs.scrollHeight;return;
+  }
+
+  const thinking=document.createElement('div');thinking.className='msg sys';thinking.textContent='PROCESSING...';msgs.appendChild(thinking);msgs.scrollTop=msgs.scrollHeight;
+
+  try {
+    const res = await fetch(`${API}/api/ollama/chat`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({model, prompt, system:'You are ARGUS, a concise tactical AI assistant managing personal infrastructure. Keep responses brief and precise.'}) });
+    const data = await res.json();
+    msgs.removeChild(thinking);
+    const aiMsg=document.createElement('div');aiMsg.className='msg ai';aiMsg.textContent=data.response;msgs.appendChild(aiMsg);msgs.scrollTop=msgs.scrollHeight;
+  } catch(e) {
+    msgs.removeChild(thinking);
+    const err=document.createElement('div');err.className='msg sys';err.textContent='COMMS FAILURE — CHECK OLLAMA STATUS';msgs.appendChild(err);msgs.scrollTop=msgs.scrollHeight;
+  }
+}
+
+document.getElementById('chatSend').addEventListener('click', sendChat);
+document.getElementById('chatInput').addEventListener('keydown', e=>{ if(e.key==='Enter') sendChat(); });
+
+// ── Init & poll loop ──────────────────────────────────────────────
+pollNetwork();
+pollOllama();
+pollSystem();
+setInterval(pollNetwork, 30000);
+setInterval(pollOllama, 15000);
+setInterval(pollSystem, 5000);
+</script>
+</body>
+</html>
