@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  ARGUS launchd service definition.
+
+  Install:
+    cp launchd/com.mitchelldynamics.argus.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.mitchelldynamics.argus.plist
+
+  Reload after edits:
+    launchctl unload ~/Library/LaunchAgents/com.mitchelldynamics.argus.plist
+    launchctl load   ~/Library/LaunchAgents/com.mitchelldynamics.argus.plist
+
+  Logs:
+    tail -f /Users/Shared/server/config/argus/logs/argus.out.log
+    tail -f /Users/Shared/server/config/argus/logs/argus.err.log
+
+  IMPORTANT: edit USER_NAME below to match your username on the mini.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.mitchelldynamics.argus</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/USER_NAME/argus/backend/.venv/bin/uvicorn</string>
+    <string>main:app</string>
+    <string>--host</string>
+    <string>0.0.0.0</string>
+    <string>--port</string>
+    <string>8000</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/USER_NAME/argus/backend</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/Shared/server/config/argus/logs/argus.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/Shared/server/config/argus/logs/argus.err.log</string>
+</dict>
+</plist>

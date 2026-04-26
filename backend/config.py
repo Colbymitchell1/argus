@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings
-from typing import List
+from typing import List, Optional
 import os
 
 
@@ -12,19 +12,47 @@ class Device:
         self.description = description
 
 
+class Service:
+    """A networked service Argus monitors via HTTP health check."""
+    def __init__(
+        self,
+        name: str,
+        url: str,
+        kind: str,                  # plex | immich | ollama | argus | caddy | generic
+        icon: str = "server",
+        description: str = "",
+        subdomain: Optional[str] = None,
+        expected_status: int = 200,
+        timeout_seconds: float = 3.0,
+        host_device: Optional[str] = None,   # cross-reference into Device registry
+    ):
+        self.name = name
+        self.url = url
+        self.kind = kind
+        self.icon = icon
+        self.description = description
+        self.subdomain = subdomain
+        self.expected_status = expected_status
+        self.timeout_seconds = timeout_seconds
+        self.host_device = host_device
+
+
 class Settings(BaseSettings):
     # App
     APP_NAME: str = "ARGUS"
-    APP_VERSION: str = "1.0.0"
+    APP_VERSION: str = "1.1.0"
     DEBUG: bool = False
 
     # Network
     SUBNET: str = "192.168.50.0/24"
     GATEWAY_IP: str = "192.168.50.1"
 
-    # Ollama
-    OLLAMA_HOST: str = "192.168.50.56"
+    # Crucible — Tailscale MagicDNS so it works regardless of network
+    OLLAMA_HOST: str = "crucible"
     OLLAMA_PORT: int = 11434
+
+    # Training capture
+    TRAINING_DATA_PATH: str = "/Users/Shared/server/config/argus/training/captures.jsonl"
 
     # Security
     API_KEY: str = "change-this-before-deploy"
@@ -36,29 +64,82 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-# ── Device Registry ────────────────────────────────────────────────
-# Add/remove devices here. This is the single source of truth.
+
+# ── Device Registry ─────────────────────────────────────────────────
+# LAN-only ICMP ping targets. Devices that move between networks (laptops,
+# phones) belong on the Tailscale endpoint, not here.
 DEVICES: List[Device] = [
     Device(
-        name="Router",
+        name="Aether",
         ip="192.168.50.1",
         icon="router",
-        description="ASUS GT-BE98 Pro — VPN Server / Network Core",
+        description="ASUS GT-BE98 Pro — Network Core",
     ),
     Device(
-        name="Legion",
+        name="Crucible",
         ip="192.168.50.56",
         mac="A8:3B:76:2A:37:89",
         icon="gpu",
-        description="Lenovo Legion — Ollama AI Inference",
+        description="Lenovo Legion (Ubuntu) — Kyra inference, GPU compute",
     ),
     Device(
-        name="Beelink",
-        ip="192.168.50.100",   # Update once Beelink is on network
-        icon="nas",
-        description="Beelink ME Mini — TrueNAS / Immich / ARGUS Backend",
+        name="Hephaestus",
+        ip="192.168.50.215",
+        icon="server",
+        description="Mac mini — ARGUS / Immich / Plex host",
+    ),
+    # Pithos (UGREEN NAS) gets added once it arrives on the network.
+]
+
+DEVICE_MAP = {d.name: d for d in DEVICES}
+
+
+# ── Service Registry ────────────────────────────────────────────────
+# Networked services Argus monitors. Drives the dashboard tiles.
+# Use Tailscale MagicDNS or .local hostnames so URLs survive IP changes.
+SERVICES: List[Service] = [
+    Service(
+        name="Argus",
+        url="http://localhost:8000/health",
+        kind="argus",
+        icon="dashboard",
+        description="This dashboard",
+        subdomain="argus.mitchelldynamics.com",
+        host_device="Hephaestus",
+    ),
+    Service(
+        name="Immich",
+        url="http://localhost:2283/api/server/ping",
+        kind="immich",
+        icon="photos",
+        description="Self-hosted photo library",
+        subdomain="photos.mitchelldynamics.com",
+        host_device="Hephaestus",
+    ),
+    Service(
+        name="Plex",
+        url="http://localhost:32400/identity",
+        kind="plex",
+        icon="media",
+        description="Media server (deferred until Pithos arrives)",
+        host_device="Hephaestus",
+    ),
+    Service(
+        name="Kyra",
+        url=f"http://{settings.OLLAMA_HOST}:{settings.OLLAMA_PORT}/api/tags",
+        kind="ollama",
+        icon="brain",
+        description="Local LLM on Crucible",
+        host_device="Crucible",
+    ),
+    Service(
+        name="Caddy",
+        url="http://localhost:2019/config/",
+        kind="caddy",
+        icon="proxy",
+        description="Reverse proxy + TLS",
+        host_device="Hephaestus",
     ),
 ]
 
-# Quick lookup by name
-DEVICE_MAP = {d.name: d for d in DEVICES}
+SERVICE_MAP = {s.name: s for s in SERVICES}

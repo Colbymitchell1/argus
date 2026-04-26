@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import logging
 
-from routers import network, wol, ollama, system
+from routers import network, wol, ollama, system, services, tailscale, training
 from config import settings
 
 logging.basicConfig(level=logging.INFO)
@@ -20,27 +20,33 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="ARGUS",
     description="Autonomous Remote Command — Personal Infrastructure Dashboard",
-    version="1.0.0",
+    version=settings.APP_VERSION,
     lifespan=lifespan,
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Tighten this after VPN is confirmed working
+    allow_origins=["*"],   # Tighten after Caddy + Tailscale-only access is verified
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-app.include_router(network.router, prefix="/api/network", tags=["Network"])
-app.include_router(wol.router, prefix="/api/wol", tags=["Wake-on-LAN"])
-app.include_router(ollama.router, prefix="/api/ollama", tags=["Ollama"])
-app.include_router(system.router, prefix="/api/system", tags=["System"])
+# Existing routers
+app.include_router(network.router,   prefix="/api/network",   tags=["Network"])
+app.include_router(wol.router,       prefix="/api/wol",       tags=["Wake-on-LAN"])
+app.include_router(ollama.router,    prefix="/api/ollama",    tags=["Ollama"])
+app.include_router(system.router,    prefix="/api/system",    tags=["System"])
+
+# New routers
+app.include_router(services.router,  prefix="/api/services",  tags=["Services"])
+app.include_router(tailscale.router, prefix="/api/tailscale", tags=["Tailscale"])
+app.include_router(training.router,  prefix="/api/training",  tags=["Training"])
 
 
 @app.get("/")
 async def root():
-    return {"status": "online", "system": "ARGUS", "version": "1.0.0"}
+    return {"status": "online", "system": "ARGUS", "version": settings.APP_VERSION}
 
 
 @app.get("/health")
