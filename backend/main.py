@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import logging
@@ -45,11 +46,13 @@ app.include_router(tailscale.router, prefix="/api/tailscale", tags=["Tailscale"]
 app.include_router(training.router,  prefix="/api/training",  tags=["Training"])
 
 
-@app.get("/")
-async def root():
+@app.get("/api")
+async def api_root():
     return {"status": "online", "system": "ARGUS", "version": settings.APP_VERSION}
-
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy"}
+    return {"status": "ok"}
+
+# Serve frontend at root — must be last so /api/* routes take precedence
+app.mount("/", StaticFiles(directory="../frontend", html=True), name="frontend")

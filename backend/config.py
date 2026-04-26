@@ -77,8 +77,8 @@ DEVICES: List[Device] = [
     ),
     Device(
         name="Crucible",
-        ip="192.168.50.56",
-        mac="A8:3B:76:2A:37:89",
+        ip="192.168.50.71",
+        mac="40:C2:BA:38:09:04",
         icon="gpu",
         description="Lenovo Legion (Ubuntu) — Kyra inference, GPU compute",
     ),

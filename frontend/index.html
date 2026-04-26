@@ -119,6 +119,32 @@ html,body { height:100%; background:#010a14; font-family:'Courier New',monospace
 .stat-v.warn { color:#ff5050; }
 .stat-v.info { color:#00c8ff; }
 
+/* Scrollable cards panel */
+.cards { overflow-y:auto; }
+.cards::-webkit-scrollbar { width:3px; }
+.cards::-webkit-scrollbar-track { background:transparent; }
+.cards::-webkit-scrollbar-thumb { background:rgba(0,180,220,0.2); border-radius:2px; }
+
+/* Section headers */
+.section-hdr { font-size:7px; letter-spacing:3px; color:#0a3040; border-bottom:1px solid rgba(0,180,220,0.1); padding-bottom:4px; flex-shrink:0; margin-top:2px; }
+
+/* Nodes subsection */
+.nodes-section { display:flex; flex-direction:column; gap:10px; }
+.nodes-section .card { flex:none; min-height:72px; }
+
+/* Tiles grid */
+.tiles-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:7px; }
+.tile { border-radius:6px; padding:9px 11px; position:relative; overflow:hidden; background:rgba(0,12,28,0.82); backdrop-filter:blur(14px); border:1px solid rgba(0,180,220,0.12); transition:border-color 0.4s; }
+.tile.online  { border-color:rgba(0,230,140,0.22); }
+.tile.offline { border-color:rgba(255,70,70,0.2); }
+.tile-tl { position:absolute; top:0; left:0; right:0; height:1px; }
+.tile.online  .tile-tl { background:linear-gradient(90deg,transparent,rgba(0,230,140,0.5),transparent); }
+.tile.offline .tile-tl { background:linear-gradient(90deg,transparent,rgba(255,70,70,0.45),transparent); }
+.tile-name { font-size:11px; font-weight:700; letter-spacing:2px; margin-bottom:3px; }
+.tile.online  .tile-name { color:#00e890; text-shadow:0 0 8px rgba(0,230,140,0.3); }
+.tile.offline .tile-name { color:#ff5050; text-shadow:0 0 8px rgba(255,70,70,0.3); }
+.tile-meta { font-size:7px; letter-spacing:1px; color:#0a3040; }
+
 /* Ollama chat panel */
 .chat-toggle { position:fixed; bottom:22px; right:22px; z-index:10; width:44px; height:44px; border-radius:50%; background:rgba(0,20,40,0.9); border:1px solid rgba(0,229,255,0.3); color:#00e5ff; font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.2s; }
 .chat-toggle:hover { border-color:rgba(0,229,255,0.7); box-shadow:0 0 14px rgba(0,229,255,0.2); }
@@ -185,16 +211,21 @@ html,body { height:100%; background:#010a14; font-family:'Courier New',monospace
       </div>
 
       <div class="cards" id="cardsContainer">
-        <!-- Cards injected by JS -->
+        <div class="section-hdr">// NETWORK NODES</div>
+        <div class="nodes-section" id="nodesSection"></div>
+        <div class="section-hdr">// SERVICES</div>
+        <div class="tiles-grid" id="servicesSection"></div>
+        <div class="section-hdr">// TAILNET</div>
+        <div class="tiles-grid" id="tailnetSection"></div>
       </div>
     </div>
 
     <div class="footer">
       <div class="stat"><div class="stat-l">NODES ONLINE</div><div class="stat-v" id="statNodes">— / —</div></div>
+      <div class="stat"><div class="stat-l">SERVICES</div><div class="stat-v" id="statServices">— / —</div></div>
+      <div class="stat"><div class="stat-l">TAILNET</div><div class="stat-v" id="statTailnet">— / —</div></div>
       <div class="stat"><div class="stat-l">UPTIME</div><div class="stat-v info" id="statUptime">--:--:--</div></div>
-      <div class="stat"><div class="stat-l">OLLAMA</div><div class="stat-v warn" id="statOllama">CHECKING</div></div>
       <div class="stat"><div class="stat-l">LAST POLL</div><div class="stat-v info" id="statPoll">--:--:--</div></div>
-      <div class="stat"><div class="stat-l">ARGUS</div><div class="stat-v">v1.0.0</div></div>
     </div>
   </div>
 </div>
@@ -205,7 +236,7 @@ html,body { height:100%; background:#010a14; font-family:'Courier New',monospace
   <div class="chat-header">// ARGUS AI INTERFACE <span id="chatStatus">OFFLINE</span></div>
   <div class="chat-msgs" id="chatMsgs">
     <div class="msg sys">ARGUS AI INTERFACE READY</div>
-    <div class="msg sys">CONNECT LEGION TO ACTIVATE</div>
+    <div class="msg sys">CONNECT CRUCIBLE TO ACTIVATE</div>
   </div>
   <div class="chat-model" id="chatModel">MODEL: —</div>
   <div class="chat-input-row">
@@ -307,7 +338,7 @@ function makeWaveform(id, color, active) {
 }
 
 // ── Status ticker ─────────────────────────────────────────────────
-const msgs=['SCANNING NETWORK...','PING 192.168.50.1 — RESPONSE ACQUIRED','PING 192.168.50.56 — NO RESPONSE DETECTED','NODE LEGION OFFLINE — WAKE SIGNAL STANDING BY','MONITORING 3 REGISTERED NODES','VPN TUNNEL NOMINAL — WIREGUARD ACTIVE','ARGUS STANDING BY — ALL SYSTEMS NOMINAL'];
+const msgs=['SCANNING NETWORK...','PING 192.168.50.1 — RESPONSE ACQUIRED','PING 192.168.50.56 — NO RESPONSE DETECTED','NODE CRUCIBLE OFFLINE — WAKE SIGNAL STANDING BY','MONITORING 3 REGISTERED NODES','VPN TUNNEL NOMINAL — WIREGUARD ACTIVE','ARGUS STANDING BY — ALL SYSTEMS NOMINAL'];
 let mIdx=0,cIdx=0,tStr='',tEl=document.getElementById('ticker');
 function typeTicker(){
   if(cIdx<msgs[mIdx].length){tStr+=msgs[mIdx][cIdx];tEl.innerHTML=tStr+'<span class="cursor">_</span>';cIdx++;setTimeout(typeTicker,44);}
@@ -332,10 +363,10 @@ setInterval(()=>{feedPos+=10;if(feedPos>feedEl.scrollHeight/2)feedPos=0;feedEl.s
 
 // ── Card builder ──────────────────────────────────────────────────
 function buildCard(device) {
-  const statusClass = device.online ? 'online' : (device.ip === '192.168.50.100' ? 'pending' : 'offline');
-  const statusLabel = device.online ? `ONLINE // ${device.latency_ms}ms` : (device.ip === '192.168.50.100' ? 'PENDING DEPLOY' : 'OFFLINE');
-  const nodeLabels = { 'Router':'NODE 01 — GATEWAY', 'Legion':'NODE 02 — AI INFERENCE', 'Beelink':'NODE 03 — STORAGE' };
-  const nodeDescs  = { 'Router':'ASUS GT-BE98 Pro — VPN Server / Network Core', 'Legion':'Lenovo Legion RTX 4070 — Ollama Local LLM', 'Beelink':'Beelink ME Mini — TrueNAS / Immich / ARGUS Host' };
+  const statusClass = device.online ? 'online' : 'offline';
+  const statusLabel = device.online ? `ONLINE // ${device.latency_ms}ms` : 'OFFLINE';
+  const nodeLabels = { 'Aether':'NODE 01 — GATEWAY', 'Crucible':'NODE 02 — AI INFERENCE', 'Hephaestus':'NODE 03 — CONTROL PLANE' };
+  const nodeDescs  = { 'Aether':'ASUS GT-BE98 Pro — VPN Server / Network Core', 'Crucible':'Lenovo Legion RTX 4070 — Ollama / Kyra', 'Hephaestus':'Mac mini M-series — Argus Backend / Caddy' };
   const wvId = `wv_${device.name}`;
 
   const card = document.createElement('div');
@@ -364,7 +395,7 @@ function buildCard(device) {
 
 function updateCard(device) {
   const existing = document.getElementById(`card_${device.name}`);
-  const container = document.getElementById('cardsContainer');
+  const container = document.getElementById('nodesSection');
   const newCard = buildCard(device);
   if (existing) { container.replaceChild(newCard, existing); }
   else { container.appendChild(newCard); }
@@ -392,20 +423,54 @@ async function pollOllama() {
   try {
     const res = await fetch(`${API}/api/ollama/status`);
     const data = await res.json();
-    const el = document.getElementById('statOllama');
     const chatStatus = document.getElementById('chatStatus');
     const modelEl = document.getElementById('chatModel');
     if (data.online) {
-      el.textContent = 'ONLINE'; el.className = 'stat-v ok';
       chatStatus.textContent = 'ONLINE'; chatStatus.style.color = '#00e890';
       ollamaModels = data.models || [];
       modelEl.textContent = `MODEL: ${ollamaModels[0] || '—'}`;
     } else {
-      el.textContent = 'OFFLINE'; el.className = 'stat-v warn';
       chatStatus.textContent = 'OFFLINE'; chatStatus.style.color = '#ff5050';
-      modelEl.textContent = 'MODEL: LEGION OFFLINE';
+      modelEl.textContent = 'MODEL: CRUCIBLE OFFLINE';
     }
   } catch(e) { console.warn('Ollama poll failed', e); }
+}
+
+async function pollServices() {
+  try {
+    const res = await fetch(`${API}/api/services/status`);
+    const data = await res.json();
+    const section = document.getElementById('servicesSection');
+    section.innerHTML = '';
+    data.services.forEach(svc => {
+      const tile = document.createElement('div');
+      tile.className = `tile ${svc.online ? 'online' : 'offline'}`;
+      tile.innerHTML = `<div class="tile-tl"></div><div class="tile-name">${svc.name.toUpperCase()}</div><div class="tile-meta">${svc.kind} · ${svc.host_device}</div>`;
+      section.appendChild(tile);
+    });
+    const el = document.getElementById('statServices');
+    el.textContent = `${data.online_count} / ${data.total_count}`;
+    el.className = 'stat-v ' + (data.online_count === data.total_count ? 'ok' : data.online_count > 0 ? 'info' : 'warn');
+  } catch(e) { console.warn('Services poll failed', e); }
+}
+
+async function pollTailscale() {
+  try {
+    const res = await fetch(`${API}/api/tailscale/status`);
+    const data = await res.json();
+    const section = document.getElementById('tailnetSection');
+    section.innerHTML = '';
+    const nodes = data.self_node ? [data.self_node, ...data.peers] : data.peers;
+    nodes.forEach(node => {
+      const tile = document.createElement('div');
+      tile.className = `tile ${node.online ? 'online' : 'offline'}`;
+      tile.innerHTML = `<div class="tile-tl"></div><div class="tile-name">${node.name.toUpperCase()}</div><div class="tile-meta">${node.hostname} · ${node.tailscale_ip}</div>`;
+      section.appendChild(tile);
+    });
+    const el = document.getElementById('statTailnet');
+    el.textContent = `${data.online_count} / ${data.total_count}`;
+    el.className = 'stat-v ' + (data.online_count === data.total_count ? 'ok' : data.online_count > 0 ? 'info' : 'warn');
+  } catch(e) { console.warn('Tailscale poll failed', e); }
 }
 
 async function pollSystem() {
@@ -449,7 +514,7 @@ async function sendChat() {
 
   const model = ollamaModels[0];
   if (!model) {
-    const sys=document.createElement('div');sys.className='msg sys';sys.textContent='LEGION OFFLINE — WAKE NODE 02 FIRST';msgs.appendChild(sys);msgs.scrollTop=msgs.scrollHeight;return;
+    const sys=document.createElement('div');sys.className='msg sys';sys.textContent='CRUCIBLE OFFLINE — WAKE NODE 02 FIRST';msgs.appendChild(sys);msgs.scrollTop=msgs.scrollHeight;return;
   }
 
   const thinking=document.createElement('div');thinking.className='msg sys';thinking.textContent='PROCESSING...';msgs.appendChild(thinking);msgs.scrollTop=msgs.scrollHeight;
@@ -472,9 +537,13 @@ document.getElementById('chatInput').addEventListener('keydown', e=>{ if(e.key==
 pollNetwork();
 pollOllama();
 pollSystem();
+pollServices();
+pollTailscale();
 setInterval(pollNetwork, 30000);
 setInterval(pollOllama, 15000);
 setInterval(pollSystem, 5000);
+setInterval(pollServices, 30000);
+setInterval(pollTailscale, 20000);
 </script>
 </body>
 </html>
