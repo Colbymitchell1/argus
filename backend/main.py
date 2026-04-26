@@ -26,7 +26,8 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # Tighten after Caddy + Tailscale-only access is verified
+    allow_origins=["https://argus.mitchelldynamics.com",
+        "http://localhost:8000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -24,7 +24,7 @@
 
   <key>ProgramArguments</key>
   <array>
-    <string>/Users/USER_NAME/argus/backend/.venv/bin/uvicorn</string>
+    <string>/Users/colbymitchell/argus/backend/.venv/bin/uvicorn</string>
     <string>main:app</string>
     <string>--host</string>
     <string>0.0.0.0</string>
@@ -33,7 +33,7 @@
   </array>
 
   <key>WorkingDirectory</key>
-  <string>/Users/USER_NAME/argus/backend</string>
+  <string>/Users/colbymitchell/argus/backend</string>
 
   <key>EnvironmentVariables</key>
   <dict>
